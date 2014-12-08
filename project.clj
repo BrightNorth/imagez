@@ -1,4 +1,4 @@
-(defproject imagez "0.3.2-SNAPSHOT"
+(defproject imagez "0.5.1-SNAPSHOT"
   :description "Image processing library for Clojure"
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [net.mikera/cljunit "0.3.1"]
@@ -12,4 +12,6 @@
   :parent [net.mikera/clojure-pom "0.0.4"]
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
-  :resource-paths ["src/test/resources"])
+  :resource-paths ["src/test/resources"]
+  :repositories [["snapshots" {:url "http://nexus.brightnorth.co.uk/content/repositories/snapshots" :password :env :username :env}]
+                 ["releases" {:url "http://nexus.brightnorth.co.uk/content/repositories/releases" :password :env :username :env}]])
