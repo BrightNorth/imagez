@@ -5,13 +5,22 @@
   (:require [mikera.image.filters :as filt])
   (:require [mikera.image.protocols :as protos])
   (:use mikera.cljutils.error) 
-  (:import [java.awt.image BufferedImage BufferedImageOp])
+  (:import [java.awt.image BufferedImage BufferedImageOp]
+           [javax.imageio.metadata IIOMetadata]
+           [com.sun.imageio.plugins.jpeg JPEG JPEGImageWriter]
+           [javax.imageio ImageTypeSpecifier]
+           [org.w3c.dom Node NodeList])
   (:import [javax.imageio ImageIO IIOImage ImageWriter ImageWriteParam])
   (:import [org.imgscalr Scalr])
   (:import [mikera.gui Frames]))
 
 (set! *unchecked-math* true)
 (set! *warn-on-reflection* true)
+
+(def subsampling-1x1 17) ; 4:4:4 subsampling
+(def subsampling-2x1 33) ; 4:2:2 subsampling
+(def subsampling-2x2 34) ; 4:2:0 subsampling
+(def subsampling-4x1 65) ; 4:1:1 subsampling
 
 (defn new-image
   "Creates a new BufferedImage with the specified width and height.
@@ -175,6 +184,47 @@
         (.setProgressiveMode mode-flag))))
   write-param)
 
+(defn valid-sof-marker?
+  " 'SOF' marker can have:
+      1 child node if the color representation is greyscale,
+      3 child nodes if the color representation is YCbCr, and
+      4 child nodes if the color representation is YCMK.
+  This subsampling applies only to YCbCr."
+  [^Node marker]
+  (when (and (.equalsIgnoreCase "sof" (.getNodeName marker))
+             (.hasChildNodes marker)
+             (= 3 (.getLength (.getChildNodes marker))))
+    true))
+
+(defn set-subsampling
+  [^Node sof-marker subsampling]
+  (let [attribute-map (.getAttributes (.getFirstChild sof-marker))
+        horizontal-sampling (.getNamedItem attribute-map "HsamplingFactor")
+        vertical-sampling (.getNamedItem attribute-map "VsamplingFactor")]
+    (.setNodeValue vertical-sampling (str (bit-and subsampling 0xf)))
+    (.setNodeValue horizontal-sampling (str (bit-and (bit-shift-right subsampling 4) 0xf)))))
+
+(defn generate-metadata-with-subsampling
+  [^ImageWriter writer subsampling ^BufferedImage image]
+  (when (instance? JPEGImageWriter writer )
+    (let [specifier (ImageTypeSpecifier. (.getColorModel image) (.getSampleModel image))
+          metadata (.getDefaultImageMetadata writer specifier nil)
+          root-node (.getAsTree metadata JPEG/nativeImageMetadataFormatName)
+          ; The top level root node has two children, out of which the second one will
+          ; contain all the information related to image markers.
+          last-child (.getLastChild root-node)]
+      (when last-child
+        (let [^Node markers (-> last-child
+                          (.getChildNodes))]
+          (loop [^Node marker (.getFirstChild markers)]
+            (if (valid-sof-marker? marker)
+              (do
+                (set-subsampling marker subsampling)
+                (.setFromTree metadata JPEG/nativeImageMetadataFormatName root-node))
+              (recur (.getNextSibling marker)))))
+        metadata))))
+
+
 (defn save
   "Stores an image to disk.
 
@@ -194,14 +244,16 @@
     (save image \"/path/to/new/image/jpg\" :quality 0.7 :progressive true)
 
   Returns the path to the saved image when saved successfully."
-  [^BufferedImage image path & {:keys [quality progressive]
+  [^BufferedImage image path & {:keys [quality progressive subsampling]
                                   :or {quality 0.8
-                                       progressive nil}}]
+                                       progressive nil
+                                       subsampling subsampling-1x1}}]
   (let [outfile (file path)
         ext (-> path (split #"\.") last lower-case)
         ^ImageWriter writer (.next (ImageIO/getImageWritersByFormatName ext))
         ^ImageWriteParam write-param (.getDefaultWriteParam writer)
-        iioimage (IIOImage. image nil nil)
+        ^IIOMetadata metadata (generate-metadata-with-subsampling writer subsampling image)
+        iioimage (IIOImage. image nil metadata)
         outstream (ImageIO/createImageOutputStream outfile)]
     (apply-compression write-param quality)
     (apply-progressive write-param progressive)

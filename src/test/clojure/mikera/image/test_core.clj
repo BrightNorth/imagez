@@ -2,7 +2,9 @@
   (:use mikera.image.core)
   (:use clojure.test)
   (:require [mikera.image.colours :refer [long-colour]]
-            [clojure.java.io :refer [as-file resource input-stream]])
+            [clojure.java.io :refer [as-file resource input-stream delete-file]]
+            [clojure.string :refer [split-lines split trim]]
+            [clojure.java.shell :as sh])
   (:import java.awt.image.BufferedImage
            javax.imageio.ImageIO
            javax.imageio.ImageWriter
@@ -102,3 +104,29 @@
       (is (= (.getProgressiveMode ^ImageWriteParam (progressive-fn param true)) ImageWriteParam/MODE_DEFAULT))
       (is (= (.getProgressiveMode ^ImageWriteParam (progressive-fn param false)) ImageWriteParam/MODE_DISABLED))
       (is (= (.getProgressiveMode ^ImageWriteParam (progressive-fn param nil)) ImageWriteParam/MODE_COPY_FROM_METADATA)))))
+
+(defn check-subsampling
+  "Runs ImageMagic in the shell and returns subsampling values"
+  [file]
+  (let [line (->> (sh/sh "identify" "-verbose" file)
+                  :out
+                  split-lines
+                  (filter (partial re-matches #".*sampling-factor.*"))
+                  first)]
+    (-> (split line #":")
+        last
+        trim)))
+
+(deftest test-subsampling
+  (let [dir "src/test/resources/mikera/image/samples/"
+        out (str dir "out.jpg")]
+    (testing "subsampling 1x1 is set"
+        (save (load-image (str dir "1x1-subsampling.jpg")) out :subsampling subsampling-1x1)
+        (is (= "1x1,1x1,1x1" (check-subsampling out))))
+    (testing "subsampling 2x1 is set"
+        (save (load-image (str dir "1x1-subsampling.jpg")) out :subsampling subsampling-2x1)
+        (is (= "2x1,1x1,1x1" (check-subsampling out))))
+    (testing "subsampling 2x2 is set"
+        (save (load-image (str dir "1x1-subsampling.jpg")) out :subsampling subsampling-2x2)
+        (is (= "2x2,1x1,1x1" (check-subsampling out))))
+    (delete-file out)))
