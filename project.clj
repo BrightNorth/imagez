@@ -8,7 +8,6 @@
                  [net.mikera/mikera-gui "0.3.1"]
                  [net.mikera/randomz "0.3.0"]
                  [com.jhlabs/filters "2.0.235-1"]]
-  :repositories {"clojars.org" "http://clojars.org/repo"}
   :parent [net.mikera/clojure-pom "0.0.4"]
   :source-paths ["src/main/clojure"]
   :test-paths ["src/test/clojure"]
