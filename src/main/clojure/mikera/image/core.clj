@@ -160,11 +160,15 @@
 
 (defn- ^ImageWriteParam apply-compression
   "Applies compression to the write parameter, if possible."
-  [^ImageWriteParam write-param quality]
+  [^ImageWriteParam write-param quality ext]
   (when (.canWriteCompressed write-param)
-    (doto write-param
-      (.setCompressionMode ImageWriteParam/MODE_EXPLICIT)
-      (.setCompressionQuality quality)))
+    (if (= ext "gif")
+      (doto write-param
+        (.setCompressionMode ImageWriteParam/MODE_EXPLICIT)
+        (.setCompressionType "LZW"))
+      (doto write-param
+        (.setCompressionMode ImageWriteParam/MODE_EXPLICIT)
+        (.setCompressionQuality quality))))
   write-param)
 
 (defn- ^ImageWriteParam apply-progressive
@@ -255,7 +259,7 @@
         ^IIOMetadata metadata (generate-metadata-with-subsampling writer subsampling image)
         iioimage (IIOImage. image nil metadata)
         outstream (ImageIO/createImageOutputStream outfile)]
-    (apply-compression write-param quality)
+    (apply-compression write-param quality ext)
     (apply-progressive write-param progressive)
     (doto writer
       (.setOutput outstream)
